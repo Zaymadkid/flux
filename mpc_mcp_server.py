@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Thin MCP adapter for MPC - Mobile Pentesting Companion.
+Thin MCP adapter for FLUX - Mobile Security Analysis Forge.
 
 Exposes MobSF, JADX, Ghidra, and pipeline analysis as MCP tools
 that MCP hosts (Claude Desktop, etc.) can call directly.
@@ -38,7 +38,7 @@ from mpc.pipeline import Orchestrator
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP(
-    name="MPC - Mobile Pentesting Companion",
+    name="FLUX - Mobile Security Analysis Forge",
     instructions=(
         "Analyse Android APKs through MobSF, JADX, and Ghidra. "
         "Use mobsf_healthcheck first to verify MobSF connectivity. "
@@ -429,7 +429,7 @@ def _handle_termination(signum: int, _frame: Any) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="MPC - Mobile Pentesting Companion MCP Server",
+        description="FLUX - Mobile Security Analysis Forge MCP Server",
     )
     parser.add_argument(
         "--host",

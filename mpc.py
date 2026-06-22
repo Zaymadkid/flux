@@ -30,23 +30,23 @@ RESET = "\033[0;0m"
 BOLD = "\033[;1m"
 REVERSE = "\033[;7m"
 
-MPC_LOGO = """
-    __  ___  ___________    ____  _   __
-   /  |/  / / ___/ ___/ | / / / / | / /
-  / /|_/ /  \\__ \\\__ \\| |/ / / /  |/ /
- / /  / /  ___/ /__/ /|   / /_/ /|   /
-/_/  /_/  /____/____/ |_/\\____/ |_/
-  Mobile Pentesting Companion  v0.1
+FLUX_LOGO = """
+    ___________  __  _   ______
+   / ____/ ___/ / / / | / / _/
+  / /_   \\__ \\ / / /  |/ / /
+ / __/  ___/ // /_/ /|  / /___
+/_/    /____/ \\____/ |_/_____/
+  Mobile Security Analysis Forge
 """
 
 
 # ── CLI Application ────────────────────────────────────────────────────────
 
 
-class MPC(cmd2.Cmd):
-    """MPC - Mobile Pentesting Companion interactive shell."""
+class FluxCLI(cmd2.Cmd):
+    """FLUX - Mobile Security Analysis Forge interactive shell."""
 
-    prompt = CYAN + "mpc>" + RESET
+    prompt = CYAN + "flux>" + RESET
 
     def __init__(self) -> None:
         super().__init__(allow_cli_args=False)
@@ -98,7 +98,7 @@ class MPC(cmd2.Cmd):
         """Display the banner at shell start."""
         randomized_fg = lambda: tuple(random.randint(0, 255) for _ in range(3))
         import random
-        click.secho(MPC_LOGO, fg=randomized_fg(), bold=True)
+        click.secho(FLUX_LOGO, fg=randomized_fg(), bold=True)
         click.secho(
             " 🧪 Type help for options 🧪\n",
             fg="green",
@@ -645,7 +645,7 @@ def main() -> None:
     MPC command and executed directly.  Otherwise the interactive shell
     is started.
     """
-    app = MPC()
+    app = FluxCLI()
 
     if len(sys.argv) > 1:
         # Run a single command and exit

@@ -1,278 +1,209 @@
-<img src="https://raw.githubusercontent.com/Ch0pin/medusa/master/assets/images/logo.svg" width ="1635" height="608">
-
-## Sponsored by:
-<br>
-<a href="https://mobilehackinglab.com" target="_blank" rel="noopener noreferrer">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Ch0pin/medusa/master/assets/images/sponsors/mhl_white.png">
-  <img src="https://raw.githubusercontent.com/Ch0pin/medusa/master/assets/images/sponsors/mhl_dark.png" width="256" alt="Sponsor logo">
-</picture>
-</a>
-<br>
-<br>
-
-# MEDUSA
-
-A modular automation framework and script repository for runtime testing and investigating Android and iOS apps, designed for penetration testers and malware analysts. It lets you plug in modules to bypass protections (like SSL pinning), inspect network/WebView activity, trace API calls, examine memory/crypto, and monitor malware behavior — all from a single coordinated script. It runs on FRIDA under the hood and ships with 90+ reusable modules so tests scale and repeat easily.
-
-# Installation
-
-**System requirements:** 
-
-- Linux or macOS (limited functionality available on Windows)
-- Python 3
-- Rooted device or emulator 
-- adb
-- FRIDA server (running on the mobile device)
-
-**Installing from github:** 
-
-1.	Clone this repository.
-2.	CD into the medusa directory.
-3.	Install dependencies:
-
-```sh
-# using the system python3/pip
-pip3 install -r requirements.txt
-
-# or inside a virtual environment (recommended)
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-Or download the latest stable version from [here](https://github.com/Ch0pin/medusa/releases)
-
-**Using Docker:**
-
-A preconfigured Dockerfile is available in the medusa/ directory.
-
-1.	Build the image: `docker build -t medusa:latest ./`
-
-2.	Run the container: `docker run --name medusa --net=host --rm -it medusa:latest`
-
-3.	Enable ADB over TCP/IP on your physical device or emulator: `adb tcpip 5555`
-
-4.	Connect to the device from inside the container: `root@docker# adb connect <device_ip>:5555`
-
-## Known installation issues
-
-### macOS 
-
-During installation on macOS, you might encounter the following issue:
-
->Readline features including tab completion have been disabled because
-no supported version of readline was found. To resolve this, install
-pyreadline3 on Windows or gnureadline on Linux/Mac.
-
-To resolve, install the gnureadline package for Python:
-
-```
-pip install gnureadline
-```
-
-For Python 3.12, use the following command to install gnureadline from a specific commit:
-
-```
-pip install git+https://github.com/ludwigschwardt/python-gnureadline.git@8474e5583d4473f96b42745393c3492e2cb49224
-```
-
-### Backward compatibility with previous MEDUSA versions
-
-If you're upgrading from an older version of Medusa and encounter database compatibility issues with Mango, please refer to [DATABASE_MIGRATIONS.md](https://github.com/Ch0pin/medusa/blob/master/assets/Documentation/DATABASE_MIGRATIONS.md) for migration instructions.
-
-**Important**: If you have an existing Mango database and receive errors after updating, check the migration guide to update your database schema.
-
-# Usage
-
-## MEDUSA
-Run the appropriate entry script for each platform: 
-
-```sh
-# Android
-python3 medusa.py        
-
-# iOS
-python3 medusa_ios.py
-```
-After start, MEDUSA will enumerate available devices and let you pick one.
-
-Common interactive workflow
-
-```sh
-# list available commands or get help about a specific command
-medusa> help      # or help <command-name>
-
-# list available modules
-medusa> show all 
-
-# get quick help/details about a module
-medusa> info http_communications/ssl-pinning-bypass
-
-# add a module (Tab completes module paths)
-medusa> use http_communications/      # press [Tab] to autocomplete
-
-# list installed packages on the device
-medusa> list
-
-# instrument a package (by package name)
-medusa> run -f com.my.app
-
-# show available devices and select one
-medusa> loaddevice
-```
-
-## MANGO 
-
-Medusa’s lightweight companion CLI for static prep and automation — manifest parsing, attack-surface enumeration, app tracking, and simple device/proxy automation.
-
-Run `python3 mango.py <database-name>` to create or load a database for storing Mango’s results.
-
-```sh
-# show available devices and select one
-mango> loaddevice
-
-# pull an app (by package name)
-mango> pull com.my.app 
-
-# import an app for analysis
-mango> import /path/to/apk
-```
-
-## MCP Server Support
-
-This is optional and not required for the standard Medusa CLI workflow.
-
-If you want to use the Android MCP server (`medusa_android_mcp.py`), install the MCP requirements:
-
-```sh
-pip install -r requirements-mcp.txt
-```
-
-```sh
-# Run 
-MEDUSA_MCP_TRANSPORT=streamable-http python medusa_android_mcp.py
-```
-
-#### Configuration:
-
-```json
-"medusa-android": {
-   "type": "http",
-   "url": "http://127.0.0.1:8000/mcp"
-}
-```
-
-
-**For advanced usage and examples, see our [wiki](https://github.com/Ch0pin/medusa/wiki). For quick tips and introductory workflows, check the demos below:**
-
-
-- [MEDUSA | Android Penetration tool](https://www.youtube.com/watch?v=4hpjRuNJNDw) (credits [@ByteTheories](https://www.youtube.com/@ByteTheories))
-- [MEDUSA | Android Malware Analysis 101](https://www.youtube.com/watch?v=kUqucdkVtSU) (credits [@ByteTheories](https://www.youtube.com/@ByteTheories))
-- [Unpacking Android malware with Medusa](https://www.youtube.com/watch?v=D2-jREzCE9k) (credits [@cryptax](https://twitter.com/cryptax))
-- [Unpacking Android APKs with Medusa](https://www.youtube.com/watch?v=ffM5R2Wfl0A) (credits [@LaurieWired](https://twitter.com/LaurieWired))
-- [#Medusa - Extensible binary instrumentation framework based on #FRIDA for Android applications](https://www.youtube.com/watch?v=Hon7zETJawA) (credits [@AndroidAppSec](https://www.youtube.com/@AndroidAppSec))
-- [Memory inspection with Medusa](https://www.youtube.com/watch?v=odt21wiUugQ)
-- [Bypassing root detection](https://twitter.com/ch0pin/status/1381216805683924994)
-
-
-# How to Contribute:
-
-You can contribute to this project by:
-- Becoming a [sponsor](https://github.com/sponsors/Ch0pin) 
-- Creating a medusa module (see [how to](https://github.com/Ch0pin/medusa/wiki/Medusa#creating-a-medusa-module))
-- Making a pull request
-- Reporting an error/issue 
-- Suggesting an improvement
-- Making this project more popular by sharing it or giving a star
-
-
-## Using Stheno with Medusa
-
-[Stheno](https://github.com/Ch0pin/stheno) is a subproject of Medusa, specifically designed for intent monitoring within this framework. Below is a quick guide on how to set up and use Stheno effectively.
 
 <p align="center">
-  <img src="https://github.com/Ch0pin/stheno/assets/4659186/fd49c39e-865b-4dc3-b2d1-59a0f4594028" alt="monitor" width="400"/>
+  <img src="assets/images/flux_logo.svg" alt="FLUX Logo" width="280">
 </p>
 
-1. **Include the Intent Module**:
-   Add the `intents/start_activity` module to your Medusa project:
-   ```sh
-   medusa> add intents/start_activity
-   ```
+<h1 align="center">FLUX</h1>
+<p align="center"><strong>Mobile Security Analysis Forge</strong></p>
 
-2. **Run the Socket Server**:
-   Start the Medusa socket server to facilitate communication:
-   ```sh
-   medusa> startserver
-   ```
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/license-GPL--3.0-orange?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/Frida-16.x-red?style=flat-square" alt="Frida">
+  <img src="https://img.shields.io/badge/MCP-enabled-brightgreen?style=flat-square" alt="MCP">
+</p>
 
-3. **Launch Stheno**:
-   Open Stheno and navigate to the Intent Monitor menu, then click on **Start** to begin monitoring intents.
-
----
-# Screenshots
-
-- SSL Unpinning
-
-![ssl unpinning](https://user-images.githubusercontent.com/4659186/151658672-dc80f37c-f4fb-48b8-a355-1dc0bf2b172c.png)
-
-- Intent Monitoring 
-
-![Intent monitoring](https://user-images.githubusercontent.com/4659186/225246566-ad1e7de0-0c74-4da9-ae01-ba3fec9661a0.png)
-
-- Webview Monitoring
-
-![Webview monitoring](https://user-images.githubusercontent.com/4659186/225247047-f25fde47-671f-4e94-99d6-54996678e770.png)
-
-
-- File/Content provider monitoring
-
-![File and content providers](https://user-images.githubusercontent.com/4659186/225247734-69a58b7a-1318-4f7c-a877-6c95cdf8b07d.png)
-
-
-- Native Libraries Enumeration
-
-![Screenshot 2020-09-22 at 16 41 10](https://user-images.githubusercontent.com/4659186/151658663-6c77f2e3-6f42-4424-b593-d8cfe3d3bed3.png)
-
-- Memory READ/WRITE/SEARCH (interactive mode):
-
-![Screenshot 2020-09-22 at 16 41 10](https://user-images.githubusercontent.com/4659186/151658659-b4f83296-60ec-4818-a303-5645284b0a67.png)
-
-- Personal information exfiltration monitoring
-
-> Hooks api calls which found to be common for this kind of malware, including:
-> - Contact exfiltration 
-> - Call log exfiltration
-> - Camera usage
-> - Microphone usage
-> - Location tracking
-> - File uploading
-> - Media recording
-> - Clipboard tracking
-> - Device recon
-> - Screenshot capture
-
-<img src="https://user-images.githubusercontent.com/4659186/87245281-1c4b4c00-c43c-11ea-9cad-195ceb42794a.png" width="450" height="460">
-
-- Translation 
-
-> Translates the application's UI by hooking 'setText' calls  
-
-<img src="https://user-images.githubusercontent.com/4659186/86785673-e59bbd00-c05a-11ea-8fb0-9c3f86043104.png" width="250" height="450">                             <img src="https://user-images.githubusercontent.com/4659186/86785688-e9c7da80-c05a-11ea-838f-e4c7568c7c2a.png" width="250" height="450">     
-
-
-<img src="https://user-images.githubusercontent.com/4659186/86785693-eb919e00-c05a-11ea-901e-8cc180d6274a.png" width="550" height="250">
+<p align="center">
+  FLUX combines four powerful mobile security tools into a unified analysis platform —<br>
+  static analysis, dynamic instrumentation, decompilation, and deep binary inspection —<br>
+  all accessible through a single CLI, interactive shell, or MCP server.
+</p>
 
 ---
 
-# CREDITS:
+## Overview
 
-- Special Credits to [@rscloura](https://github.com/rscloura) for his contributions
-- Logo Credits: https://www.linkedin.com/in/rafael-c-ferreira
-- https://github.com/frida/frida
-- https://github.com/dpnishant/appmon
-- https://github.com/brompwnie/uitkyk
-- https://github.com/shivsahni/APKEnum
-- https://github.com/0xdea/frida-scripts
-- https://github.com/Areizen/JNI-Frida-Hook
+FLUX is an **evolving** mobile security testing platform. It's built on top of:
+
+| Tool | Role |
+|------|------|
+| **Medusa** | Frida-based dynamic instrumentation (90+ hook modules) |
+| **MobSF** | Static analysis, malware scanning, SAST |
+| **JADX** | DEX/APK decompilation to readable Java |
+| **Ghidra** | Deep binary analysis and decompilation |
+
+FLUX pipelines these tools together — upload an APK to MobSF for scanning, decompile it with JADX for vulnerability search, instrument it with Medusa hooks, and generate a unified report — all in one command.
+
+---
+
+## Quick Start
+
+```bash
+# Requirements
+pip install -r requirements-mcp.txt
+
+# Analyze an APK
+python mpc.py analyze target.apk --mobsf --jadx
+
+# Start the interactive shell
+python mpc.py
+
+# Start the MCP server
+python mpc_mcp_server.py --transport stdio
+```
+
+### What You Need
+
+Each tool is optional — FLUX works with whatever you have available:
+
+- **MobSF** → `pip install mobsf` or use a remote instance (set `MOBSF_URL`)
+- **JADX** → `choco install jadx` or download from [jadx.io](https://jadx.io)
+- **Ghidra** → Download from [ghidra-sre.org](https://ghidra-sre.org) (set `GHIDRA_HOME`)
+- **Medusa/ADB** → Included. Connect an Android device or emulator.
+
+---
+
+## Tools
+
+FLUX exposes these tools through its CLI and MCP server:
+
+### Pipeline Tools
+- `analyze_apk` — Full sequential analysis (MobSF + JADX + Ghidra)
+- `analyze_apk_parallel` — MobSF + JADX in parallel
+- `generate_report` — Run pipeline + generate JSON/MD/HTML reports
+- `search_vulnerabilities` — Regex search decompiled code for 10+ vulnerability patterns
+
+### MobSF Tools
+- `mobsf_healthcheck` — Verify MobSF server connectivity
+- `mobsf_upload` — Upload APK/IPA for analysis
+- `mobsf_scan` — Start static/malware scan
+- `mobsf_report` — Fetch full JSON report
+- `mobsf_sast_summary` — Extract SAST findings summary
+
+### JADX Tools
+- `jadx_decompile` — Decompile APK to readable Java source
+- `jadx_search` — Search decompiled code with regex
+- `jadx_list_files` — List all decompiled Java files
+
+### Ghidra Tools
+- `ghidra_analyze` — Headless Ghidra binary analysis
+
+### Medusa Integration (via interactive shell)
+- 90+ Frida hook modules for dynamic instrumentation
+- SSL pinning bypass, root detection bypass, crypto monitoring
+- Network traffic interception, filesystem monitoring
+- Intent fuzzing, deep link testing
+
+### Report Formats
+- **JSON** — Machine-readable structured findings
+- **Markdown** — Formatted with severity badges (critical/high/medium/low/info)
+- **HTML** — Minimal standalone page with severity-colored cards
+
+### Vulnerability Patterns (default)
+Hardcoded API keys, insecure WebView configs, weak hashing (MD5/SHA1), SQL injection, sensitive data logging, mutable pending intents, custom deeplink schemes, insecure Random, SSL pinning bypass, world-writable files.
+
+---
+
+## Usage
+
+### CLI
+
+```bash
+# Analyze
+python mpc.py analyze target.apk --mobsf --jadx
+
+# Parallel analysis
+python mpc.py analyze-parallel target.apk
+
+# MobSF only
+python mpc.py mobsf-upload target.apk
+python mpc.py mobsf-scan <file_hash>
+python mpc.py mobsf-report <file_hash>
+
+# JADX only
+python mpc.py jadx-decompile target.apk
+python mpc.py jadx-search target.apk "(?i)api_key|secret|password"
+
+# Generate report
+python mpc.py report target.apk --output-dir ./reports
+
+# Interactive shell
+python mpc.py
+```
+
+### MCP Server
+
+```bash
+# Start with stdio transport (for IDE integration)
+python mpc_mcp_server.py --transport stdio
+
+# Start with HTTP transport
+python mpc_mcp_server.py --transport streamable-http --port 8000
+```
+
+### Configuration (Environment Variables)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MOBSF_URL` | `http://localhost:8000` | MobSF server URL |
+| `MOBSF_API_KEY` | — | MobSF REST API key |
+| `JADX_HOME` | — | Path to JADX installation |
+| `GHIDRA_HOME` | `C:\ghidra_11.3` | Path to Ghidra installation |
+| `MPC_MCP_HOST` | `0.0.0.0` | MCP server bind host |
+| `MPC_MCP_PORT` | `8000` | MCP server port |
+| `MPC_MCP_TRANSPORT` | `streamable-http` | MCP transport protocol |
+
+---
+
+## Project Structure
+
+```
+FLUX/
+├── mpc/                    # Core Python package
+│   ├── mobsf.py            # MobSF REST API client
+│   ├── jadx.py             # JADX CLI wrapper
+│   ├── ghidra.py           # Ghidra headless bridge
+│   ├── pipeline.py         # Analysis orchestrator
+│   ├── report.py           # Report generator (JSON/MD/HTML)
+│   └── config.py           # Environment-based configuration
+├── mpc.py                  # Interactive CLI entry point
+├── mpc_mcp_server.py       # MCP protocol server
+├── modules/                # Medusa Frida hook modules (90+)
+│   └── mobsf/              # MobSF metadata collection module
+├── medusa.py               # Medusa interactive CLI
+├── medusa_android_mcp.py   # Medusa MCP server
+├── tests/                  # 132 pytest tests
+│   ├── test_mobsf.py
+│   ├── test_jadx.py
+│   ├── test_ghidra.py
+│   ├── test_pipeline.py
+│   └── test_report.py
+└── assets/
+    └── images/
+        └── flux_logo.svg   # FLUX logo
+```
+
+---
+
+## Credits
+
+FLUX brings together four exceptional open-source projects. All credit to their creators:
+
+- **[Medusa](https://github.com/Ch0pin/medusa)** — The foundation. Medusa provides 90+ Frida-based instrumentation modules for Android security testing, plus the interactive CLI and MCP server that FLUX builds upon.
+- **[MobSF](https://github.com/MobSF/Mobile-Security-Framework-MobSF)** — Mobile Security Framework. Automated static, dynamic, and malware analysis for Android/iOS apps.
+- **[JADX](https://github.com/skylot/jadx)** — DEX to Java decompiler. Transforms APK bytecode into readable Java source.
+- **[Ghidra](https://github.com/NationalSecurityAgency/ghidra)** — NSA's reverse engineering framework. Deep binary analysis and decompilation.
+
+FLUX is **GPL-3.0 licensed** — the same license as Medusa, which it extends.
+
+---
+
+## Status
+
+**Active development.** FLUX is evolving — more tools, more modules, and deeper integrations are being added.
+
+- 132 passing tests
+- 4 integrated tools (Medusa, MobSF, JADX, Ghidra)
+- 13 MCP tools
+- 10 vulnerability pattern categories
+- 3 report formats (JSON, MD, HTML)
