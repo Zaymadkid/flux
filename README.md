@@ -160,6 +160,18 @@ python mpc_mcp_server.py --transport stdio
 python mpc_mcp_server.py --transport streamable-http --port 8000
 ```
 
+### Dashboard
+
+```bash
+# Start the local web dashboard
+python mpc_dashboard.py
+
+# Custom port or report directory
+python mpc_dashboard.py --port 9000 --report-dir ./reports
+```
+
+Opens a browser at `http://localhost:9000` showing your analysis reports — project list with severity breakdowns, detailed findings with expandable descriptions, and JSON report downloads. All data is read from the `./reports/` directory FLUX already writes to.
+
 ### Configuration (Environment Variables)
 
 | Variable | Default | Purpose |
@@ -187,6 +199,7 @@ FLUX/
 │   └── config.py           # Environment-based configuration
 ├── mpc.py                  # Interactive CLI entry point
 ├── mpc_mcp_server.py       # MCP protocol server
+├── mpc_dashboard.py         # Web dashboard (Bottle, local report browser)
 ├── modules/                # Medusa Frida hook modules (90+)
 │   └── mobsf/              # MobSF metadata collection module
 ├── ghidramcp/               # GhidraMCP plugin + bridge (LaurieWired)
