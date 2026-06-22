@@ -1,0 +1,287 @@
+{
+    "Name": "mobsf/mobsf_scan",
+    "Description": "MobSF integration bridge — collects app metadata and prepares data for MobSF analysis. Monitors package info, permissions, network endpoints, and APK signature details. Does not call MobSF directly; instead logs structured data suitable for manual or automated submission to MobSF.",
+    "Help": "https://github.com/MobSF/Mobile-Security-Framework-MobSF",
+    "Options": [
+        {
+            "name": "mobsf_url",
+            "help": "Base URL of the MobSF server (e.g. http://localhost:8000). Used for connectivity check logging.",
+            "type": "string",
+            "value": "http://localhost:8000"
+        },
+        {
+            "name": "api_key",
+            "help": "MobSF REST API key. If set, the module logs that an API key is configured (value is masked for security).",
+            "type": "string",
+            "value": ""
+        }
+    ],
+    "Code": "
+console.log('\\n--------MobSF Bridge Module by Medusa @ch0pin / enhanced for MobSF integration----------');
+
+{
+    let __mobsf_url__ = 'http://localhost:8000';
+    let __api_key__ = '';
+
+    // ──────── Utility: test network reachability via Java ────────
+    function testMobsfConnectivity(url) {
+        try {
+            var URL = Java.use('java.net.URL');
+            var HttpURLConnection = Java.use('java.net.HttpURLConnection');
+            var conn = URL.$new(url + '/api/v1/auth/').openConnection();
+            conn = Java.cast(conn, HttpURLConnection);
+            conn.setRequestMethod('GET');
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(5000);
+            var responseCode = conn.getResponseCode();
+            colorLog('[ MobSF ] Connectivity check to ' + url + ' returned HTTP ' + responseCode, { c: Color.Blue });
+            if (responseCode == 200) {
+                colorLog('[ MobSF ] MobSF server is reachable!', { c: Color.Green });
+            } else if (responseCode == 401 || responseCode == 403) {
+                colorLog('[ MobSF ] MobSF server reachable — auth required (expected).', { c: Color.Green });
+            } else {
+                colorLog('[ MobSF ] MobSF server responded with unexpected code: ' + responseCode, { c: Color.Yellow });
+            }
+            return responseCode;
+        } catch (e) {
+            colorLog('[ MobSF ] Could not reach MobSF server at ' + url + ': ' + e.message, { c: Color.Red });
+            return -1;
+        }
+    }
+
+    // ──────── App metadata collection hooks ────────
+
+    function hookPackageManager() {
+        try {
+            var PackageManager = Java.use('android.content.pm.PackageManager');
+            var context = Java.use('android.app.ActivityThread').currentApplication().getApplicationContext();
+            var pkgName = context.getPackageName();
+
+            colorLog('[ MobSF ] Target package: ' + pkgName, { c: Color.Cyan });
+
+            // Hook getPackageInfo to capture version info and signatures
+            PackageManager.getPackageInfo.overload('java.lang.String', 'int').implementation = function(pkg, flags) {
+                var info = this.getPackageInfo(pkg, flags);
+                if (pkg === pkgName) {
+                    var meta = {};
+                    meta.packageName = pkg;
+                    meta.versionName = info.versionName;
+                    meta.versionCode = info.versionCode;
+                    meta.firstInstallTime = info.firstInstallTime ? new Date(parseInt(info.firstInstallTime.toString())).toISOString() : 'N/A';
+                    meta.lastUpdateTime = info.lastUpdateTime ? new Date(parseInt(info.lastUpdateTime.toString())).toISOString() : 'N/A';
+                    colorLog('[ MobSF ] === App Metadata for MobSF Submission ===', { c: Color.Blue });
+                    colorLog('[ MobSF ] Package Name    : ' + meta.packageName, { c: Color.Green });
+                    colorLog('[ MobSF ] Version Name    : ' + meta.versionName, { c: Color.Green });
+                    colorLog('[ MobSF ] Version Code    : ' + meta.versionCode, { c: Color.Green });
+                    colorLog('[ MobSF ] First Install   : ' + meta.firstInstallTime, { c: Color.Green });
+                    colorLog('[ MobSF ] Last Update     : ' + meta.lastUpdateTime, { c: Color.Green });
+                    styleLog('[ MobSF ] Metadata payload for MobSF', [JSON.stringify(meta)], StyleLogColorset.white, StyleLogColorset.blue);
+                }
+                return info;
+            };
+
+            // Hook getPackageInfo with no flags overload (API 33+)
+            var getPkgInfoOverloads = PackageManager.getPackageInfo.overloads;
+            for (var i = 0; i < getPkgInfoOverloads.length; i++) {
+                var sig = getPkgInfoOverloads[i].argumentTypes.map(function(t) { return t.className; }).join(', ');
+                if (sig === 'java.lang.String, android.content.pm.PackageManager$PackageInfoFlags') {
+                    getPkgInfoOverloads[i].implementation = function(pkg, flags) {
+                        var info = this.getPackageInfo(pkg, flags);
+                        if (pkg === pkgName) {
+                            colorLog('[ MobSF ] Package info flags call: ' + pkg + ' version=' + info.versionName, { c: Color.Green });
+                        }
+                        return info;
+                    };
+                }
+            }
+        } catch (e) {
+            colorLog('[ MobSF ] PackageManager hook error: ' + e.message, { c: Color.Red });
+        }
+    }
+
+    function hookSignatureInfo() {
+        try {
+            var PackageManager = Java.use('android.content.pm.PackageManager');
+            var context = Java.use('android.app.ActivityThread').currentApplication().getApplicationContext();
+            var pkgName = context.getPackageName();
+
+            // Hook getPackageInfo to extract signing info when SIGNING_CERTIFICATES flag is set
+            var pkgInfoClass = Java.use('android.content.pm.PackageInfo');
+            if (pkgInfoClass.signatures) {
+                PackageManager.getPackageInfo.overload('java.lang.String', 'int').implementation = function(pkg, flags) {
+                    var info = this.getPackageInfo(pkg, flags);
+                    if (pkg === pkgName && info.signatures && info.signatures.length > 0) {
+                        colorLog('[ MobSF ] === APK Signature Information ===', { c: Color.Blue });
+                        colorLog('[ MobSF ] Number of signatures: ' + info.signatures.length, { c: Color.Green });
+                        for (var s = 0; s < info.signatures.length; s++) {
+                            var sigBytes = info.signatures[s].toByteArray();
+                            var sigHex = '';
+                            for (var b = 0; b < sigBytes.length && b < 32; b++) {
+                                var hexByte = (sigBytes[b] & 0xFF).toString(16);
+                                if (hexByte.length === 1) hexByte = '0' + hexByte;
+                                sigHex += hexByte;
+                            }
+                            colorLog('[ MobSF ] Signature[' + s + '] (first 32 bytes): ' + sigHex + '...', { c: Color.Green });
+                        }
+                        styleLog('[ MobSF ] Signature data ready for MobSF upload', ['signatures detected: ' + info.signatures.length], StyleLogColorset.white, StyleLogColorset.blue);
+                    }
+                    return info;
+                };
+            }
+        } catch (e) {
+            colorLog('[ MobSF ] Signature hook (legacy) not available: ' + e.message, { c: Color.Yellow });
+        }
+
+        // Newer Android: PackageInfo signiningInfo via getSigningInfo
+        try {
+            var PackageManager = Java.use('android.content.pm.PackageManager');
+            var context = Java.use('android.app.ActivityThread').currentApplication().getApplicationContext();
+            var pkgName = context.getPackageName();
+            var signingInfoClass = Java.use('android.content.pm.SigningInfo');
+
+            var getSigningInfoOverloads = PackageManager.getSigningInfo.overloads;
+            for (var i = 0; i < getSigningInfoOverloads.length; i++) {
+                getSigningInfoOverloads[i].implementation = function(pkg) {
+                    var info = this.getSigningInfo(pkg);
+                    if (info) {
+                        colorLog('[ MobSF ] SigningInfo retrieved for: ' + pkg, { c: Color.Green });
+                        try {
+                            var apkContentsSigners = info.getApkContentsSigners();
+                            if (apkContentsSigners && apkContentsSigners.length > 0) {
+                                colorLog('[ MobSF ] APK Contents Signers count: ' + apkContentsSigners.length, { c: Color.Green });
+                                for (var s = 0; s < apkContentsSigners.length; s++) {
+                                    var cert = apkContentsSigners[s];
+                                    colorLog('[ MobSF ] Signer[' + s + ']: ' + cert.getSubjectDN().getName(), { c: Color.Cyan });
+                                }
+                            }
+                        } catch (e2) {
+                            // Some devices may not expose this
+                        }
+                    }
+                    return info;
+                };
+            }
+        } catch (e) {
+            colorLog('[ MobSF ] SigningInfo hook not available: ' + e.message, { c: Color.Yellow });
+        }
+    }
+
+    function hookPermissions() {
+        try {
+            var PackageManager = Java.use('android.content.pm.PackageManager');
+            var context = Java.use('android.app.ActivityThread').currentApplication().getApplicationContext();
+            var pkgName = context.getPackageName();
+
+            colorLog('[ MobSF ] === Application Permissions ===', { c: Color.Blue });
+
+            try {
+                var pm = context.getPackageManager();
+                var permInfoList = pm.getInstalledPackages(4096).toArray(); // GET_PERMISSIONS
+                for (var i = 0; i < permInfoList.length; i++) {
+                    if (permInfoList[i].packageName === pkgName) {
+                        var requestedPerms = permInfoList[i].requestedPermissions;
+                        if (requestedPerms) {
+                            var permArray = Java.cast(requestedPerms, Java.use('java.lang.String[]'));
+                            for (var p = 0; p < permArray.length; p++) {
+                                colorLog('[ MobSF ] Permission: ' + permArray[p], { c: Color.Cyan });
+                            }
+                            colorLog('[ MobSF ] Total permissions declared: ' + permArray.length, { c: Color.Green });
+                        } else {
+                            colorLog('[ MobSF ] No requested permissions found.', { c: Color.Yellow });
+                        }
+                        break;
+                    }
+                }
+            } catch (e) {
+                colorLog('[ MobSF ] Could not enumerate permissions: ' + e.message, { c: Color.Red });
+            }
+        } catch (e) {
+            colorLog('[ MobSF ] Permission hook error: ' + e.message, { c: Color.Red });
+        }
+    }
+
+    function hookNetworkEndpoints() {
+        try {
+            // Monitor OkHttp3 client requests (common in modern Android apps)
+            var OkHttpClient = Java.use('okhttp3.OkHttpClient');
+            if (OkHttpClient) {
+                OkHttpClient.newCall.implementation = function(request) {
+                    var url = request.url().toString();
+                    if (url.indexOf('localhost') >= 0 || url.indexOf('127.0.0.1') >= 0) {
+                        colorLog('[ MobSF ] Local endpoint detected: ' + url, { c: Color.Yellow });
+                    }
+                    return this.newCall(request);
+                };
+            }
+        } catch (e) {
+            // OkHttp3 not present — that's fine
+        }
+
+        try {
+            // Monitor java.net.HttpURLConnection usage
+            var HttpURLConnection = Java.use('java.net.HttpURLConnection');
+            HttpURLConnection.connect.implementation = function() {
+                var url = this.getURL().toString();
+                colorLog('[ MobSF ] HTTP connection: ' + url, { c: Color.Cyan });
+                return this.connect();
+            };
+        } catch (e) {
+            colorLog('[ MobSF ] HttpURLConnection hook not available: ' + e.message, { c: Color.Yellow });
+        }
+    }
+
+    function hookActivityThread() {
+        try {
+            var ActivityThread = Java.use('android.app.ActivityThread');
+            ActivityThread.currentApplication.implementation = function() {
+                var app = this.currentApplication();
+                if (app) {
+                    var context = app.getApplicationContext();
+                    if (context) {
+                        var pkgName = context.getPackageName();
+                        colorLog('[ MobSF ] Application active: ' + pkgName, { c: Color.Green });
+                    }
+                }
+                return app;
+            };
+        } catch (e) {
+            colorLog('[ MobSF ] ActivityThread hook error: ' + e.message, { c: Color.Red });
+        }
+    }
+
+    // ──────── Main entry point ────────
+
+    Java.perform(function() {
+        colorLog('[ MobSF ] === MobSF Bridge Module Loaded ===', { c: Color.Blue });
+        colorLog('[ MobSF ] MobSF URL configured: ' + __mobsf_url__, { c: Color.Cyan });
+
+        if (__api_key__ && __api_key__.length > 0) {
+            var masked = __api_key__.substring(0, 4) + '****' + __api_key__.substring(__api_key__.length - 4);
+            colorLog('[ MobSF ] API Key configured: ' + masked, { c: Color.Green });
+        } else {
+            colorLog('[ MobSF ] No API key configured. Data will be logged locally only.', { c: Color.Yellow });
+        }
+
+        colorLog('[ MobSF ] This is a bridge module — data is prepared and logged for MobSF submission.', { c: Color.Cyan });
+        colorLog('[ MobSF ] To submit: upload the APK to ' + __mobsf_url__ + ' via the MobSF web UI or REST API.', { c: Color.Cyan });
+
+        // Test connectivity to MobSF (in a try block so it doesn't block hooks)
+        try {
+            testMobsfConnectivity(__mobsf_url__);
+        } catch (e) {
+            colorLog('[ MobSF ] Connectivity test skipped: ' + e.message, { c: Color.Yellow });
+        }
+
+        // Install all hooks
+        hookPackageManager();
+        hookSignatureInfo();
+        hookPermissions();
+        hookNetworkEndpoints();
+        hookActivityThread();
+
+        colorLog('[ MobSF ] All hooks installed. Ready to collect metadata for MobSF analysis.', { c: Color.Green });
+        colorLog('[ MobSF ] === MobSF Bridge initialization complete ===', { c: Color.Blue });
+    });
+}
+"
+}
