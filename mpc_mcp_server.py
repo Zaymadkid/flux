@@ -217,21 +217,23 @@ class MpcBridge:
                 return {"success": False, "error": str(exc)}
 
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Ghidra tools
     # ------------------------------------------------------------------
+
+    def ghidra(self) -> GhidraClient:
+        """Return the GhidraMCP client."""
+        return self.orch.ghidra
 
     def ghidra_analyze(
         self,
         apk_path: str,
         script_path: str | None = None,
     ) -> dict[str, Any]:
-        """Run Ghidra headless analysis on an APK."""
+        """Import an APK into Ghidra for analysis via GhidraMCP."""
         with self.lock:
             try:
-                result = self.orch.ghidra.analyze_apk(
-                    apk_path,
-                    script_path=script_path,
-                )
+                result = self.orch.ghidra.analyze_apk(apk_path)
                 return {"success": result.get("success", False), "data": result}
             except Exception as exc:
                 return {"success": False, "error": str(exc)}
@@ -374,13 +376,127 @@ def jadx_list_files(apk_path: str) -> dict[str, Any]:
     return bridge.jadx_list_files(apk_path)
 
 
-# -- Ghidra tools ------------------------------------------------------
+# -- Ghidra tools (powered by GhidraMCP) ---------------------------------
 
 
 @mcp.tool()
-def ghidra_analyze(apk_path: str, script_path: str | None = None) -> dict[str, Any]:
-    """Run Ghidra headless analysis on an APK. Optionally provide a Ghidra script path."""
-    return bridge.ghidra_analyze(apk_path, script_path=script_path)
+def ghidra_healthcheck() -> dict[str, Any]:
+    """Check whether the GhidraMCP server is reachable."""
+    return {"reachable": bridge.ghidra().healthcheck()}
+
+
+@mcp.tool()
+def ghidra_decompile_function(name: str) -> str:
+    """Decompile a function by name and return decompiled C code."""
+    return bridge.ghidra().decompile_function(name)
+
+
+@mcp.tool()
+def ghidra_decompile_function_by_address(address: str) -> str:
+    """Decompile a function at the given hex address."""
+    return bridge.ghidra().decompile_function_by_address(address)
+
+
+@mcp.tool()
+def ghidra_disassemble_function(address: str) -> list:
+    """Get assembly code (address: instruction; comment) for a function."""
+    return bridge.ghidra().disassemble_function(address)
+
+
+@mcp.tool()
+def ghidra_list_functions() -> list:
+    """List all function names in the program."""
+    return bridge.ghidra().list_functions()
+
+
+@mcp.tool()
+def ghidra_list_methods(offset: int = 0, limit: int = 100) -> list:
+    """List function names with pagination."""
+    return bridge.ghidra().list_methods(offset=offset, limit=limit)
+
+
+@mcp.tool()
+def ghidra_list_classes(offset: int = 0, limit: int = 100) -> list:
+    """List namespace/class names with pagination."""
+    return bridge.ghidra().list_classes(offset=offset, limit=limit)
+
+
+@mcp.tool()
+def ghidra_list_segments(offset: int = 0, limit: int = 100) -> list:
+    """List memory segments with pagination."""
+    return bridge.ghidra().list_segments(offset=offset, limit=limit)
+
+
+@mcp.tool()
+def ghidra_list_imports(offset: int = 0, limit: int = 100) -> list:
+    """List imported symbols with pagination."""
+    return bridge.ghidra().list_imports(offset=offset, limit=limit)
+
+
+@mcp.tool()
+def ghidra_list_exports(offset: int = 0, limit: int = 100) -> list:
+    """List exported functions/symbols with pagination."""
+    return bridge.ghidra().list_exports(offset=offset, limit=limit)
+
+
+@mcp.tool()
+def ghidra_list_strings(offset: int = 0, limit: int = 2000, filter: str | None = None) -> list:
+    """List all defined strings with their addresses."""
+    return bridge.ghidra().list_strings(offset=offset, limit=limit, filter=filter)
+
+
+@mcp.tool()
+def ghidra_search_functions(query: str, offset: int = 0, limit: int = 100) -> list:
+    """Search functions whose name contains the given substring."""
+    return bridge.ghidra().search_functions_by_name(query=query, offset=offset, limit=limit)
+
+
+@mcp.tool()
+def ghidra_rename_function(old_name: str, new_name: str) -> str:
+    """Rename a function by its current name."""
+    return bridge.ghidra().rename_function(old_name, new_name)
+
+
+@mcp.tool()
+def ghidra_rename_data(address: str, new_name: str) -> str:
+    """Rename a data label at the specified address."""
+    return bridge.ghidra().rename_data(address, new_name)
+
+
+@mcp.tool()
+def ghidra_get_xrefs_to(address: str, offset: int = 0, limit: int = 100) -> list:
+    """Get all references to the specified address (xref to)."""
+    return bridge.ghidra().get_xrefs_to(address, offset=offset, limit=limit)
+
+
+@mcp.tool()
+def ghidra_get_xrefs_from(address: str, offset: int = 0, limit: int = 100) -> list:
+    """Get all references from the specified address (xref from)."""
+    return bridge.ghidra().get_xrefs_from(address, offset=offset, limit=limit)
+
+
+@mcp.tool()
+def ghidra_get_function_xrefs(name: str, offset: int = 0, limit: int = 100) -> list:
+    """Get all references to the specified function by name."""
+    return bridge.ghidra().get_function_xrefs(name, offset=offset, limit=limit)
+
+
+@mcp.tool()
+def ghidra_set_decompiler_comment(address: str, comment: str) -> str:
+    """Set a comment for a given address in the function pseudocode."""
+    return bridge.ghidra().set_decompiler_comment(address, comment)
+
+
+@mcp.tool()
+def ghidra_set_disassembly_comment(address: str, comment: str) -> str:
+    """Set a comment for a given address in the disassembly."""
+    return bridge.ghidra().set_disassembly_comment(address, comment)
+
+
+@mcp.tool()
+def ghidra_import_apk(apk_path: str) -> dict:
+    """Import an APK into Ghidra for analysis. Ghidra must be running with GhidraMCPPlugin."""
+    return bridge.ghidra().analyze_apk(apk_path)
 
 
 # -- Pipeline tools ----------------------------------------------------

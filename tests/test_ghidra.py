@@ -1,248 +1,308 @@
-"""Tests for the MPC GhidraClient."""
+"""Tests for the FLUX Ghidra client (powered by GhidraMCP)."""
 
-import json
+from __future__ import annotations
+
 import os
-import platform
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mpc.ghidra import GhidraClient
+from mpc.ghidra import DEFAULT_GHIDRA_MCP_URL, GhidraClient, GhidraMCPError
 
 
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------
 # Fixtures
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------
 
 
 @pytest.fixture
-def ghidra_path(tmp_path: Path) -> str:
-    """Create a fake Ghidra installation tree with a dummy
-    ``analyzeHeadless`` executable so path resolution succeeds."""
-    if platform.system() == "Windows":
-        exe = tmp_path / "support" / "analyzeHeadless.bat"
-    else:
-        exe = tmp_path / "support" / "analyzeHeadless"
-    exe.parent.mkdir(parents=True, exist_ok=True)
-    exe.write_text("")
-    return str(tmp_path)
+def client() -> GhidraClient:
+    return GhidraClient(mcp_url="http://127.0.0.1:8080/")
 
 
-@pytest.fixture
-def client(ghidra_path: str, tmp_path: Path) -> GhidraClient:
-    """Return a GhidraClient pointed at the fake installation."""
-    return GhidraClient(
-        ghidra_path=ghidra_path,
-        project_dir=str(tmp_path / "projects"),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Initialisation
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------
+# Initialization
+# ------------------------------------------------------------------
 
 
 class TestInit:
-    def test_default_project_dir_creation(self, ghidra_path: str, tmp_path: Path) -> None:
-        """Project directory is created on init when it doesn't exist."""
-        proj_dir = str(tmp_path / "auto_created")
-        client = GhidraClient(ghidra_path=ghidra_path, project_dir=proj_dir)
-        assert os.path.isdir(proj_dir)
+    def test_defaults_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GHIDRA_MCP_URL", "http://127.0.0.1:8080/")
+        c = GhidraClient(mcp_url=None)
+        assert c._mcp_url == "http://127.0.0.1:8080/"
 
-    def test_analyze_headless_path(self, client: GhidraClient) -> None:
-        """The internal path to analyzeHeadless is correct for the platform."""
-        expected_name = (
-            "analyzeHeadless.bat" if platform.system() == "Windows" else "analyzeHeadless"
-        )
-        assert client._analyze_headless.endswith(expected_name)
+    def test_explicit_url_override(self) -> None:
+        c = GhidraClient(mcp_url="http://localhost:9090/")
+        assert c._mcp_url == "http://localhost:9090/"
 
-    def test_init_without_args_uses_env_fallback(self, tmp_path: Path, monkeypatch) -> None:
-        """Omitting both args falls back to GHIDRA_HOME env var."""
-        fake_home = str(tmp_path / "ghidra_env")
-        monkeypatch.setenv("GHIDRA_HOME", fake_home)
-        Path(fake_home, "support").mkdir(parents=True)
-        (Path(fake_home, "support", "analyzeHeadless.bat" if platform.system() == "Windows" else "analyzeHeadless")).write_text("")
-        client = GhidraClient(project_dir=str(tmp_path / "projs"))
-        assert fake_home in client.ghidra_path
+    def test_url_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GHIDRA_MCP_URL", "http://10.0.0.1:8080/")
+        c = GhidraClient()
+        assert c._mcp_url == "http://10.0.0.1:8080/"
 
 
-# ---------------------------------------------------------------------------
-# Command construction
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------
+# HTTP helpers
+# ------------------------------------------------------------------
 
 
-class TestCommandConstruction:
-    def test_analyze_apk_basic(self, client: GhidraClient) -> None:
-        """Verify the analyzeHeadless command for a basic APK import."""
-        cmd = client._build_analyze_command(project_name="test_proj", import_path=r"C:\tmp\app.apk")
-        assert client._analyze_headless in cmd[0]
-        assert client.project_dir in cmd[1]
-        assert cmd[2] == "test_proj"
-        assert "-overwrite" in cmd
-        assert "-import" in cmd
-        assert r"C:\tmp\app.apk" in cmd
+class TestHttpHelpers:
+    def test_get_success(self, client: GhidraClient) -> None:
+        with patch.object(client._session, "get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.ok = True
+            mock_resp.text = "func1\nfunc2\nfunc3"
+            mock_get.return_value = mock_resp
 
-    def test_analyze_apk_with_script(self, client: GhidraClient, tmp_path: Path) -> None:
-        """Script dir is added to -scriptPath when a postScript is supplied."""
-        script = tmp_path / "scripts" / "dump.py"
-        script.parent.mkdir(parents=True)
-        script.write_text("")
-        cmd = client._build_analyze_command(
-            project_name="proj",
-            import_path=str(tmp_path / "app.apk"),
-            post_script=str(script),
-            script_args=["--verbose"],
-        )
-        assert "-scriptPath" in cmd
-        assert str(script.parent) in cmd
-        assert "-postScript" in cmd
-        assert "dump.py" in cmd
-        assert "-postScriptArg=--verbose" in cmd
+            result = client._get("methods", {"offset": 0, "limit": 10})
+            assert result == ["func1", "func2", "func3"]
+            mock_get.assert_called_once_with(
+                "http://127.0.0.1:8080/methods",
+                params={"offset": 0, "limit": 10},
+                timeout=10,
+            )
 
-    def test_analyze_apk_without_overwrite(self, client: GhidraClient, tmp_path: Path) -> None:
-        """Overwrite flag is omitted when overwrite=False."""
-        cmd = client._build_analyze_command(
-            project_name="proj",
-            import_path=str(tmp_path / "app.apk"),
-            overwrite=False,
-        )
-        assert "-overwrite" not in cmd
+    def test_get_error(self, client: GhidraClient) -> None:
+        with patch.object(client._session, "get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.ok = False
+            mock_resp.status_code = 404
+            mock_resp.text = "Not Found"
+            mock_get.return_value = mock_resp
+
+            result = client._get("methods")
+            assert result[0].startswith("Error 404")
+
+    def test_get_connection_error(self, client: GhidraClient) -> None:
+        with patch.object(client._session, "get") as mock_get:
+            from requests.exceptions import ConnectionError
+            mock_get.side_effect = ConnectionError("Connection refused")
+
+            result = client._get("methods")
+            assert result[0].startswith("GhidraMCP connection failed")
+
+    def test_post_success(self, client: GhidraClient) -> None:
+        with patch.object(client._session, "post") as mock_post:
+            mock_resp = MagicMock()
+            mock_resp.ok = True
+            mock_resp.text = "decompiled code"
+            mock_post.return_value = mock_resp
+
+            result = client._post("decompile", "main")
+            assert result == "decompiled code"
+
+    def test_post_error(self, client: GhidraClient) -> None:
+        with patch.object(client._session, "post") as mock_post:
+            mock_resp = MagicMock()
+            mock_resp.ok = False
+            mock_resp.status_code = 500
+            mock_resp.text = "Internal Server Error"
+            mock_post.return_value = mock_resp
+
+            result = client._post("decompile", "main")
+            assert result.startswith("Error 500")
 
 
-# ---------------------------------------------------------------------------
-# analyze_apk
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------
+# Healthcheck
+# ------------------------------------------------------------------
+
+
+class TestHealthcheck:
+    def test_healthy(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["OK"]):
+            assert client.healthcheck() is True
+
+    def test_unhealthy(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["Error 404: Not Found"]):
+            assert client.healthcheck() is False
+
+    def test_connection_error(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["GhidraMCP connection failed"]):
+            assert client.healthcheck() is False
+
+
+# ------------------------------------------------------------------
+# Function / Symbol listing
+# ------------------------------------------------------------------
+
+
+class TestListing:
+    def test_list_functions(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["main", "helper", "init"]):
+            result = client.list_functions()
+            assert result == ["main", "helper", "init"]
+
+    def test_list_methods_paginated(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["method_a", "method_b"]) as mock_get:
+            result = client.list_methods(offset=10, limit=50)
+            mock_get.assert_called_with("methods", {"offset": 10, "limit": 50})
+            assert result == ["method_a", "method_b"]
+
+    def test_list_classes(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["ClassA", "ClassB"]):
+            result = client.list_classes()
+            assert result == ["ClassA", "ClassB"]
+
+    def test_list_segments(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=[".text", ".data", ".bss"]):
+            result = client.list_segments()
+            assert result == [".text", ".data", ".bss"]
+
+    def test_list_imports(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["printf", "malloc"]):
+            result = client.list_imports()
+            assert result == ["printf", "malloc"]
+
+    def test_list_exports(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["DllMain"]):
+            result = client.list_exports()
+            assert result == ["DllMain"]
+
+    def test_list_strings(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["Hello", "World"]):
+            result = client.list_strings(limit=10)
+            assert result == ["Hello", "World"]
+
+    def test_list_strings_with_filter(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get") as mock_get:
+            mock_get.return_value = ["password_setting"]
+            result = client.list_strings(filter="password")
+            mock_get.assert_called_with("strings", {"offset": 0, "limit": 2000, "filter": "password"})
+            assert result == ["password_setting"]
+
+    def test_search_functions_by_name(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["main"]):
+            result = client.search_functions_by_name("main")
+            assert result == ["main"]
+
+    def test_search_functions_empty_query(self, client: GhidraClient) -> None:
+        result = client.search_functions_by_name("")
+        assert "Error" in result[0]
+
+
+# ------------------------------------------------------------------
+# Decompilation
+# ------------------------------------------------------------------
+
+
+class TestDecompilation:
+    def test_decompile_function(self, client: GhidraClient) -> None:
+        with patch.object(client, "_post", return_value="int main() { return 0; }"):
+            result = client.decompile_function("main")
+            assert "int main" in result
+
+    def test_decompile_function_by_address(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["int main() { return 0; }"]):
+            result = client.decompile_function_by_address("0x140001000")
+            assert "int main" in result
+
+    def test_disassemble_function(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["0x1000: push rbp"]):
+            result = client.disassemble_function("0x140001000")
+            assert "0x1000" in result[0]
+
+
+# ------------------------------------------------------------------
+# Renaming
+# ------------------------------------------------------------------
+
+
+class TestRenaming:
+    def test_rename_function(self, client: GhidraClient) -> None:
+        with patch.object(client, "_post", return_value="OK"):
+            result = client.rename_function("func_1", "calculateHash")
+            assert result == "OK"
+
+    def test_rename_data(self, client: GhidraClient) -> None:
+        with patch.object(client, "_post", return_value="OK"):
+            result = client.rename_data("0x140005000", "secret_key")
+            assert result == "OK"
+
+    def test_rename_variable(self, client: GhidraClient) -> None:
+        with patch.object(client, "_post", return_value="OK"):
+            result = client.rename_variable("main", "v1", "userCount")
+            assert result == "OK"
+
+
+# ------------------------------------------------------------------
+# Cross-references
+# ------------------------------------------------------------------
+
+
+class TestXrefs:
+    def test_get_xrefs_to(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["0x1000: call main"]):
+            result = client.get_xrefs_to("0x140001000")
+            assert "0x1000" in result[0]
+
+    def test_get_xrefs_from(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["0x140001000: call printf"]):
+            result = client.get_xrefs_from("0x140001000")
+            assert "call printf" in result[0]
+
+    def test_get_function_xrefs(self, client: GhidraClient) -> None:
+        with patch.object(client, "_get", return_value=["0x1000: call main"]):
+            result = client.get_function_xrefs("main")
+            assert result == ["0x1000: call main"]
+
+
+# ------------------------------------------------------------------
+# Comments / Prototypes
+# ------------------------------------------------------------------
+
+
+class TestModification:
+    def test_set_decompiler_comment(self, client: GhidraClient) -> None:
+        with patch.object(client, "_post", return_value="OK"):
+            result = client.set_decompiler_comment("0x140001000", "TODO: review")
+            assert result == "OK"
+
+    def test_set_function_prototype(self, client: GhidraClient) -> None:
+        with patch.object(client, "_post", return_value="OK"):
+            result = client.set_function_prototype("0x140001000", "int main(int argc, char** argv)")
+            assert result == "OK"
+
+
+# ------------------------------------------------------------------
+# analyze_apk (GhidraMCP mode)
+# ------------------------------------------------------------------
 
 
 class TestAnalyzeApk:
     def test_apk_not_found(self, client: GhidraClient) -> None:
-        """Returns an error dict when the APK does not exist."""
-        result = client.analyze_apk(r"C:\nonexistent\missing.apk")
+        result = client.analyze_apk("/nonexistent/test.apk")
         assert result["success"] is False
-        assert "not found" in (result.get("error") or "").lower()
+        assert "not found" in result["error"]
 
-    @patch("mpc.ghidra.subprocess.run")
-    def test_successful_analysis(self, mock_run, client: GhidraClient, tmp_path: Path) -> None:
-        """A successful subprocess call returns success=True and captures output."""
-        apk_path = str(tmp_path / "target.apk")
-        Path(apk_path).write_text("fake apk content")
+    def test_healthcheck_fails(self, client: GhidraClient) -> None:
+        with patch.object(client, "healthcheck", return_value=False):
+            result = client.analyze_apk(__file__)
+            assert result["success"] is False
+            assert "not reachable" in result["error"]
 
-        mock_proc = MagicMock()
-        mock_proc.returncode = 0
-        mock_proc.stdout = "analysis complete"
-        mock_proc.stderr = ""
-        mock_run.return_value = mock_proc
+    def test_import_success(self, client: GhidraClient) -> None:
+        with patch.object(client, "healthcheck", return_value=True):
+            with patch.object(client, "_post", return_value="Imported OK"):
+                result = client.analyze_apk(__file__)
+                assert result["success"] is True
+                assert result["output"] == "Imported OK"
 
-        result = client.analyze_apk(apk_path)
-        assert result["success"] is True
-        assert result["return_code"] == 0
-        assert "analysis complete" in result["stdout"]
-
-    @patch("mpc.ghidra.subprocess.run")
-    def test_failed_analysis(self, mock_run, client: GhidraClient, tmp_path: Path) -> None:
-        """A nonzero return code is surfaced in the result."""
-        apk_path = str(tmp_path / "bad.apk")
-        Path(apk_path).write_text("fake")
-
-        mock_proc = MagicMock()
-        mock_proc.returncode = 1
-        mock_proc.stdout = ""
-        mock_proc.stderr = "Import error: invalid format"
-        mock_run.return_value = mock_proc
-
-        result = client.analyze_apk(apk_path)
-        assert result["success"] is False
-        assert result["return_code"] == 1
-        assert "invalid format" in result["stderr"]
-
-    @patch("mpc.ghidra.subprocess.run")
-    def test_output_dir_writes_logs(self, mock_run, client: GhidraClient, tmp_path: Path) -> None:
-        """When output_dir is given, stdout and stderr are written to disk."""
-        apk_path = str(tmp_path / "target.apk")
-        Path(apk_path).write_text("fake")
-
-        mock_proc = MagicMock()
-        mock_proc.returncode = 0
-        mock_proc.stdout = "stdout content"
-        mock_proc.stderr = "stderr content"
-        mock_run.return_value = mock_proc
-
-        out_dir = str(tmp_path / "results")
-        result = client.analyze_apk(apk_path, output_dir=out_dir)
-        assert result["success"] is True
-
-        log_files = list(Path(out_dir).iterdir())
-        assert len(log_files) > 0
-
-    @patch("mpc.ghidra.subprocess.run")
-    def test_timeout_handling(self, mock_run, client: GhidraClient, tmp_path: Path) -> None:
-        """subprocess.TimeoutExpired is caught and returned as an error."""
-        from subprocess import TimeoutExpired
-
-        apk_path = str(tmp_path / "timeout.apk")
-        Path(apk_path).write_text("fake")
-        mock_run.side_effect = TimeoutExpired(cmd="analyzeHeadless", timeout=300)
-
-        result = client.analyze_apk(apk_path)
-        assert result["success"] is False
-        assert "timed out" in (result.get("error") or "").lower()
-
-    @patch("mpc.ghidra.subprocess.run")
-    def test_file_not_found_error(self, mock_run, client: GhidraClient, tmp_path: Path) -> None:
-        """FileNotFoundError (missing analyzeHeadless) is handled gracefully."""
-        apk_path = str(tmp_path / "missing_exe.apk")
-        Path(apk_path).write_text("fake")
-        mock_run.side_effect = FileNotFoundError()
-
-        result = client.analyze_apk(apk_path)
-        assert result["success"] is False
-        assert "not found" in (result.get("error") or "").lower()
+    def test_import_failure(self, client: GhidraClient) -> None:
+        with patch.object(client, "healthcheck", return_value=True):
+            with patch.object(client, "_post", return_value="Error 500: fail"):
+                result = client.analyze_apk(__file__)
+                assert result["success"] is False
 
 
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------
 # run_script
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------
 
 
 class TestRunScript:
-    @patch("mpc.ghidra.subprocess.run")
-    def test_script_not_found(self, mock_run, client: GhidraClient) -> None:
-        """Missing script returns an error before any subprocess call."""
-        result = client.run_script("proj", r"C:\missing\script.py")
+    def test_not_supported(self, client: GhidraClient) -> None:
+        result = client.run_script("proj", "script.py")
         assert result["success"] is False
-        assert "not found" in (result.get("error") or "").lower()
-        mock_run.assert_not_called()
-
-    @patch("mpc.ghidra.subprocess.run")
-    def test_successful_script_run(self, mock_run, client: GhidraClient, tmp_path: Path) -> None:
-        """A successful script execution returns the expected result."""
-        script = tmp_path / "my_script.py"
-        script.write_text("")
-
-        mock_proc = MagicMock()
-        mock_proc.returncode = 0
-        mock_proc.stdout = "script done"
-        mock_proc.stderr = ""
-        mock_run.return_value = mock_proc
-
-        result = client.run_script("existing_proj", str(script))
-        assert result["success"] is True
-        assert result["project_name"] == "existing_proj"
-
-
-# ---------------------------------------------------------------------------
-# GhidraMCP placeholders
-# ---------------------------------------------------------------------------
-
-
-class TestGhidraMcpPlaceholders:
-    def test_decompile_method_raises(self, client: GhidraClient) -> None:
-        """decompile_method raises NotImplementedError until GhidraMCP is wired."""
-        with pytest.raises(NotImplementedError, match="GhidraMCP"):
-            client.decompile_method("com.example.Foo", "bar")
-
-    def test_get_call_graph_raises(self, client: GhidraClient) -> None:
-        """get_call_graph raises NotImplementedError until GhidraMCP is wired."""
-        with pytest.raises(NotImplementedError, match="GhidraMCP"):
-            client.get_call_graph("proj", "com.example.Foo::bar")
+        assert "not available" in result["error"]

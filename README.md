@@ -85,8 +85,27 @@ FLUX exposes these tools through its CLI and MCP server:
 - `jadx_search` — Search decompiled code with regex
 - `jadx_list_files` — List all decompiled Java files
 
-### Ghidra Tools
-- `ghidra_analyze` — Headless Ghidra binary analysis
+### Ghidra Tools (powered by GhidraMCP)
+- `ghidra_healthcheck` — Check GhidraMCP server connectivity
+- `ghidra_import_apk` — Import APK into Ghidra for analysis
+- `ghidra_decompile_function` — Decompile a function to C code
+- `ghidra_decompile_function_by_address` — Decompile function at hex address
+- `ghidra_disassemble_function` — Get assembly for a function
+- `ghidra_list_functions` — List all function names
+- `ghidra_list_methods` — List paginated function names
+- `ghidra_list_classes` — List namespace/class names
+- `ghidra_list_segments` — List memory segments
+- `ghidra_list_imports` — List imported symbols
+- `ghidra_list_exports` — List exported symbols
+- `ghidra_list_strings` — List defined strings with addresses
+- `ghidra_search_functions` — Search functions by name substring
+- `ghidra_rename_function` — Rename a function
+- `ghidra_rename_data` — Rename a data label
+- `ghidra_get_xrefs_to` — Get cross-references to an address
+- `ghidra_get_xrefs_from` — Get cross-references from an address
+- `ghidra_get_function_xrefs` — Get references to a function
+- `ghidra_set_decompiler_comment` — Set comment in pseudocode
+- `ghidra_set_disassembly_comment` — Set comment in disassembly
 
 ### Medusa Integration (via interactive shell)
 - 90+ Frida hook modules for dynamic instrumentation
@@ -162,7 +181,7 @@ FLUX/
 ├── mpc/                    # Core Python package
 │   ├── mobsf.py            # MobSF REST API client
 │   ├── jadx.py             # JADX CLI wrapper
-│   ├── ghidra.py           # Ghidra headless bridge
+│   ├── ghidra.py           # GhidraMCP client (decompile, rename, xrefs, etc.)
 │   ├── pipeline.py         # Analysis orchestrator
 │   ├── report.py           # Report generator (JSON/MD/HTML)
 │   └── config.py           # Environment-based configuration
@@ -170,7 +189,10 @@ FLUX/
 ├── mpc_mcp_server.py       # MCP protocol server
 ├── modules/                # Medusa Frida hook modules (90+)
 │   └── mobsf/              # MobSF metadata collection module
-├── medusa.py               # Medusa interactive CLI
+├── ghidramcp/               # GhidraMCP plugin + bridge (LaurieWired)
+│   ├── bridge_mcp_ghidra.py # Python MCP bridge to Ghidra
+│   ├── src/                 # Ghidra plugin Java source
+│   └── lib/                 # Ghidra extension JAR
 ├── medusa_android_mcp.py   # Medusa MCP server
 ├── tests/                  # 132 pytest tests
 │   ├── test_mobsf.py
@@ -187,12 +209,12 @@ FLUX/
 
 ## Credits
 
-FLUX brings together four exceptional open-source projects. All credit to their creators:
+FLUX brings together exceptional open-source projects. All credit to their creators:
 
 - **[Medusa](https://github.com/Ch0pin/medusa)** — The foundation. Medusa provides 90+ Frida-based instrumentation modules for Android security testing, plus the interactive CLI and MCP server that FLUX builds upon.
 - **[MobSF](https://github.com/MobSF/Mobile-Security-Framework-MobSF)** — Mobile Security Framework. Automated static, dynamic, and malware analysis for Android/iOS apps.
 - **[JADX](https://github.com/skylot/jadx)** — DEX to Java decompiler. Transforms APK bytecode into readable Java source.
-- **[Ghidra](https://github.com/NationalSecurityAgency/ghidra)** — NSA's reverse engineering framework. Deep binary analysis and decompilation.
+- **[GhidraMCP](https://github.com/LaurieWired/GhidraMCP)** — MCP Server for Ghidra by LaurieWired. Provides decompilation, renaming, cross-referencing, and binary analysis tools through Ghidra's plugin system.
 
 FLUX is **GPL-3.0 licensed** — the same license as Medusa, which it extends.
 
@@ -202,8 +224,8 @@ FLUX is **GPL-3.0 licensed** — the same license as Medusa, which it extends.
 
 **Active development.** FLUX is evolving — more tools, more modules, and deeper integrations are being added.
 
-- 132 passing tests
-- 4 integrated tools (Medusa, MobSF, JADX, Ghidra)
-- 13 MCP tools
+- 153 passing tests
+- 4 integrated tools (Medusa, MobSF, JADX, GhidraMCP)
+- 31 MCP tools
 - 10 vulnerability pattern categories
 - 3 report formats (JSON, MD, HTML)
