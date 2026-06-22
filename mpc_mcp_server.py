@@ -582,7 +582,7 @@ def main() -> None:
     )
 
     try:
-        mcp.run(transport=args.transport, host=args.host, port=args.port)
+        mcp.run(transport=args.transport)
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received. Shutting down.")
         sys.exit(0)
